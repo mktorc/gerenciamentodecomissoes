@@ -40,14 +40,5 @@ create index if not exists reservas_a_pagar_idx
   on public.reservas (commission_partner, created_at)
   where liberada and status_repasse = 'pendente';
 
--- RLS: o app usa a anon key sem login. Estas policies deixam qualquer portador da
--- chave ler e marcar como paga. Troque `anon` por `authenticated` quando houver auth.
+-- RLS: o acesso é definido em migrations/004_login.sql (usuários logados e autorizados).
 alter table public.reservas enable row level security;
-
-drop policy if exists reservas_select on public.reservas;
-create policy reservas_select on public.reservas for select to anon using (true);
-
-drop policy if exists reservas_marcar_paga on public.reservas;
-create policy reservas_marcar_paga on public.reservas for update to anon
-  using (liberada and status_repasse = 'pendente' and not retida_agencia)
-  with check (status_repasse = 'paga');

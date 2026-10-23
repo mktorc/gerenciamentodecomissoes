@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import logo from './assets/logo.png'
+import { useAuth } from './lib/auth'
 import ComissoesAPagar from './pages/ComissoesAPagar'
 import Historico from './pages/Historico'
+import Login from './pages/Login'
 
 const ABAS = [
   { id: 'pagar', rotulo: 'Comissões a Pagar', icone: '$' },
@@ -11,6 +13,7 @@ const ABAS = [
 const CHAVE = 'sidebar-recolhida'
 
 export default function App() {
+  const { session, carregando, sair } = useAuth()
   const [aba, setAba] = useState<(typeof ABAS)[number]['id']>('pagar')
   const [recolhida, setRecolhida] = useState(() => {
     try {
@@ -29,6 +32,9 @@ export default function App() {
       }
       return !v
     })
+
+  if (carregando) return <div className="min-h-screen bg-brand-700" />
+  if (!session) return <Login />
 
   return (
     <div className="min-h-screen bg-slate-100 md:flex">
@@ -72,6 +78,17 @@ export default function App() {
             )
           })}
         </nav>
+
+        <div className={`mt-auto p-3 ${recolhida ? 'md:flex md:justify-center' : ''}`}>
+          {!recolhida && <p className="mb-2 truncate px-1 text-xs text-white/70">{session.user.email}</p>}
+          <button
+            onClick={sair}
+            title="Sair"
+            className="w-full rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-brand-800 md:w-auto md:min-w-10 md:text-center"
+          >
+            {recolhida ? '⎋' : 'Sair'}
+          </button>
+        </div>
 
         {recolhida && (
           <button
