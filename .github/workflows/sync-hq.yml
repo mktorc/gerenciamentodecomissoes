@@ -1,0 +1,29 @@
+name: Sincronizar HQ Rentals
+
+on:
+  schedule:
+    # 15:00 UTC = 12:00 em Brasília (o GitHub agenda sempre em UTC)
+    - cron: '0 15 * * *'
+  workflow_dispatch: # permite rodar manualmente na aba Actions
+
+concurrency:
+  group: sync-hq
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/importar-hq.mjs
+        env:
+          HQ_TENANT_TOKEN: ${{ secrets.HQ_TENANT_TOKEN }}
+          HQ_USER_TOKEN: ${{ secrets.HQ_USER_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Paleta Orlando Rentcar (extraída do logo) */
+@theme {
+  --color-brand-50: #eef8f0;
+  --color-brand-100: #d3eed9;
+  --color-brand-600: #007f2b;
+  --color-brand-700: #006823;
+  --color-brand-800: #00561d;
+  --color-brand-900: #003f15;
+  --color-lime-brand: #56e302;
+}
