@@ -6,8 +6,11 @@
 import { createClient } from '@supabase/supabase-js'
 
 const { HQ_TENANT_TOKEN, HQ_USER_TOKEN, VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env
-if (!HQ_TENANT_TOKEN || !HQ_USER_TOKEN || !VITE_SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('Defina HQ_TENANT_TOKEN, HQ_USER_TOKEN, VITE_SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY no .env.local.')
+const faltando = Object.entries({ HQ_TENANT_TOKEN, HQ_USER_TOKEN, VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY })
+  .filter(([, v]) => !v)
+  .map(([k]) => k)
+if (faltando.length) {
+  console.error(`Variáveis ausentes ou vazias: ${faltando.join(', ')}. Localmente, defina no .env.local; no GitHub, em Settings > Secrets and variables > Actions.`)
   process.exit(1)
 }
 
