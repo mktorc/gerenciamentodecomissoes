@@ -68,6 +68,10 @@ const pagina = (page) => hq(`${BASE}?limit=100&page=${page}`)
 let page = 1, ultima = 1, lidas = 0, gravadas = 0
 do {
   const j = await pagina(page)
+  // resposta sem paginação = o HQ não devolveu as reservas; falha em vez de "concluir" sem importar nada
+  if (!Array.isArray(j.data) || !Number.isInteger(j.last_page)) {
+    throw new Error(`Resposta inesperada do HQ na página ${page}: ${JSON.stringify(j).slice(0, 300)}`)
+  }
   ultima = j.last_page
   lidas += j.data.length
   const linhas = j.data.map(mapear).filter(Boolean)
@@ -89,3 +93,7 @@ do {
 } while (++page <= ultima)
 
 console.log(`Concluído: ${lidas} reservas lidas, ${gravadas} gravadas (as demais não têm parceiro com comissão > 0%).`)
+if (lidas === 0) {
+  console.error('Nenhuma reserva lida do HQ.')
+  process.exit(1)
+}
