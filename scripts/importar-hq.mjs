@@ -14,7 +14,8 @@ if (faltando.length) {
   process.exit(1)
 }
 
-const auth = Buffer.from(`${HQ_TENANT_TOKEN}:${HQ_USER_TOKEN}`).toString('base64')
+// secrets colados no GitHub costumam vir com quebra de linha no fim, o que invalida a autenticação
+const auth = Buffer.from(`${HQ_TENANT_TOKEN.trim()}:${HQ_USER_TOKEN.trim()}`).toString('base64')
 const BASE = 'https://api-america-3.caagcrm.com/api-america-3/car-rental/reservations'
 const supabase = createClient(VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
 
