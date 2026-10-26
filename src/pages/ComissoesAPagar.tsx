@@ -1,21 +1,28 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Card, Carregando, Erro, Vazio } from '../components/Estados'
 import { FiltrosBar } from '../components/FiltrosBar'
 import { filtrosVazios, useParceiros, useReservas } from '../hooks'
 import { data, moeda } from '../lib/format'
-import { listarAPagar, marcarComoPagas } from '../services/comissoes'
+import { listarAPagar, listarEstornos, marcarComoPagas } from '../services/comissoes'
 import type { Filtros, Reserva } from '../types/comissoes'
 
 interface GrupoParceiro {
   parceiro: string
   reservas: Reserva[]
-  total: number
+  estornos: Reserva[]
+  bruto: number
+  desconto: number
+  total: number // líquido: bruto - estornos
 }
 
 export default function ComissoesAPagar() {
   const [filtros, setFiltros] = useState<Filtros>(filtrosVazios)
   const parceiros = useParceiros()
   const { linhas, carregando, erro, recarregar } = useReservas(listarAPagar, filtros)
+  const [estornos, setEstornos] = useState<Reserva[]>([])
+  useEffect(() => {
+    listarEstornos(filtros.parceiro).then(setEstornos).catch(() => setEstornos([]))
+  }, [filtros.parceiro, linhas])
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [salvando, setSalvando] = useState(false)
@@ -23,14 +30,26 @@ export default function ComissoesAPagar() {
 
   const grupos = useMemo<GrupoParceiro[]>(() => {
     const mapa = new Map<string, GrupoParceiro>()
-    for (const r of linhas) {
-      const g = mapa.get(r.commission_partner) ?? { parceiro: r.commission_partner, reservas: [], total: 0 }
-      g.reservas.push(r)
-      g.total += r.valor_comissao
-      mapa.set(r.commission_partner, g)
+    const grupo = (p: string) => {
+      const g = mapa.get(p) ?? { parceiro: p, reservas: [], estornos: [], bruto: 0, desconto: 0, total: 0 }
+      mapa.set(p, g)
+      return g
     }
+    for (const r of linhas) {
+      const g = grupo(r.commission_partner)
+      g.reservas.push(r)
+      g.bruto += r.valor_comissao
+    }
+    // só desconta estorno de parceiro que tem comissão a receber nesta lista
+    for (const e of estornos) {
+      const g = mapa.get(e.commission_partner)
+      if (!g) continue
+      g.estornos.push(e)
+      g.desconto += e.valor_comissao
+    }
+    for (const g of mapa.values()) g.total = g.bruto - g.desconto
     return [...mapa.values()].sort((a, b) => b.total - a.total)
-  }, [linhas])
+  }, [linhas, estornos])
 
   const resumo = useMemo(
     () => ({ total: grupos.reduce((s, g) => s + g.total, 0), qtd: linhas.length, parceiros: grupos.length }),
@@ -47,14 +66,20 @@ export default function ComissoesAPagar() {
     return n
   }
 
-  async function pagar(alvo: Reserva[], descricao: string) {
+  async function pagar(alvo: Reserva[], descricao: string, descontos: Reserva[] = []) {
     if (!alvo.length) return
-    const soma = alvo.reduce((s, r) => s + r.valor_comissao, 0)
-    if (!window.confirm(`Marcar como paga(s) ${alvo.length} comissão(ões) — ${descricao}?\nTotal: ${moeda(soma)}`)) return
+    const bruto = alvo.reduce((s, r) => s + r.valor_comissao, 0)
+    const desc = descontos.reduce((s, r) => s + r.valor_comissao, 0)
+    if (bruto - desc < 0) {
+      setAviso({ tipo: 'erro', texto: `${descricao}: os estornos (${moeda(desc)}) superam as comissões (${moeda(bruto)}); nada a pagar agora.` })
+      return
+    }
+    const detalhe = desc ? `\nComissões: ${moeda(bruto)} − estornos de canceladas: ${moeda(desc)}` : ''
+    if (!window.confirm(`Marcar como paga(s) ${alvo.length} comissão(ões) — ${descricao}?${detalhe}\nTotal a pagar: ${moeda(bruto - desc)}`)) return
     setSalvando(true)
     setAviso(null)
     try {
-      const n = await marcarComoPagas(alvo.map((r) => r.id))
+      const n = await marcarComoPagas(alvo.map((r) => r.id), descontos.map((r) => r.id))
       setAviso({ tipo: 'ok', texto: `${n} comissão(ões) marcada(s) como paga(s).` })
       setSelecionados(new Set())
       await recarregar()
@@ -93,7 +118,7 @@ export default function ComissoesAPagar() {
           <span className="text-sm text-slate-600">{marcados.length} parceiro(s) selecionado(s)</span>
           <button
             disabled={!marcados.length || salvando}
-            onClick={() => pagar(marcados.flatMap((g) => g.reservas), `${marcados.length} parceiro(s)`)}
+            onClick={() => pagar(marcados.flatMap((g) => g.reservas), `${marcados.length} parceiro(s)`, marcados.flatMap((g) => g.estornos))}
             className="rounded-md bg-brand-700 px-3 py-2 text-sm font-medium text-white hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {salvando ? 'Salvando...' : 'Marcar selecionados como pagos'}
@@ -140,9 +165,16 @@ export default function ComissoesAPagar() {
                           </button>
                         </td>
                         <td className="px-4 py-3 text-right">{g.reservas.length}</td>
-                        <td className="px-4 py-3 text-right font-semibold">{moeda(g.total)}</td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          {moeda(g.total)}
+                          {g.desconto > 0 && (
+                            <div className="text-xs font-normal text-red-600">
+                              {moeda(g.bruto)} − {moeda(g.desconto)} de estornos
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-right">
-                          <button disabled={salvando} onClick={() => pagar(g.reservas, g.parceiro)}
+                          <button disabled={salvando} onClick={() => pagar(g.reservas, g.parceiro, g.estornos)}
                             className="text-brand-700 hover:underline disabled:opacity-50">Marcar pago</button>
                         </td>
                       </tr>
@@ -177,6 +209,19 @@ export default function ComissoesAPagar() {
                                       <button disabled={salvando} onClick={() => pagar([r], r.hq_reservation_id)}
                                         className="text-brand-700 hover:underline disabled:opacity-50">Marcar paga</button>
                                     </td>
+                                  </tr>
+                                ))}
+                                {g.estornos.map((r) => (
+                                  <tr key={r.id} className="border-t border-slate-200 text-red-700">
+                                    <td className="py-1.5 pr-4 font-mono">
+                                      {r.hq_reservation_id}
+                                      <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 font-sans">Estorno (cancelada, já paga)</span>
+                                    </td>
+                                    <td className="py-1.5 pr-4">{data(r.created_at)}</td>
+                                    <td className="py-1.5 pr-4 text-right">{moeda(r.total_paid)}</td>
+                                    <td className="py-1.5 pr-4 text-right">{moeda(r.rack_rate)}</td>
+                                    <td className="py-1.5 pr-4 text-right font-medium">−{moeda(r.valor_comissao)}</td>
+                                    <td />
                                   </tr>
                                 ))}
                               </tbody>

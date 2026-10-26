@@ -18,6 +18,7 @@ export interface Reserva {
   paga_em: string | null
   liberada: boolean
   valor_comissao: number
+  estorno_compensado_em: string | null
 }
 
 /** Status exibido na interface, derivado de status_repasse + liberada. */
